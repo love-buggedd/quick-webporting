@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="viewport-fit=cover, width=device-width, initial-scale=1.0, minimum-scale=1.0, maximum-scale=1.0">
+  <title>DELTARUNE Chapters</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    body {
+      display: block;
+      background:
+        radial-gradient(circle at center, rgba(50, 50, 80, 0.22) 0%, rgba(0, 0, 0, 0) 42%),
+        linear-gradient(to bottom, #080808 0%, #000 100%);
+    }
+
+    #title-screen,
+    #loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #title-screen {
+      z-index: 20;
+      background: #000;
+    }
+
+    #title-inner {
+      width: min(92vw, 560px);
+      text-align: center;
+      padding: 24px;
+    }
+
+    #logo {
+      font-size: clamp(34px, 7vw, 70px);
+      font-weight: 900;
+      letter-spacing: 3px;
+      margin-bottom: 12px;
+    }
+
+    #subtitle {
+      font-size: 14px;
+      color: #bfbfbf;
+      margin-bottom: 28px;
+    }
+
+    .chapter-list {
+      display: grid;
+      gap: 12px;
+    }
+
+    .chapter-btn {
+      appearance: none;
+      border: 1px solid #666;
+      background: rgba(20, 20, 20, 0.92);
+      color: #fff;
+      padding: 16px 18px;
+      border-radius: 10px;
+      cursor: pointer;
+      font-size: 18px;
+      font-weight: 700;
+      transition: transform 0.12s ease, background 0.12s ease, border-color 0.12s ease;
+    }
+
+    .chapter-btn:hover {
+      background: rgba(40, 40, 40, 0.96);
+      border-color: #aaa;
+      transform: scale(1.015);
+    }
+
+    .chapter-btn:active {
+      transform: scale(0.99);
+    }
+
+    #loader {
+      display: none;
+      flex-direction: column;
+      z-index: 15;
+      background:
+        radial-gradient(circle at center, rgba(255,255,255,0.04) 0%, rgba(0,0,0,0) 38%),
+        rgba(0, 0, 0, 0.96);
+      text-align: center;
+      color: white;
+      font-family: monospace;
+    }
+
+    #spinner {
+      width: 42px;
+      height: 42px;
+      border: 4px solid rgba(255,255,255,.2);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin-bottom: 12px;
+    }
+
+    #status {
+      margin-bottom: 10px;
+      min-height: 20px;
+    }
+
+    #progress {
+      width: min(80vw, 320px);
+      height: 16px;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    #canvas {
+      display: none;
+      background: #000;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      outline: none;
+    }
+
+    #message-container,
+    #pauseMenuContainer,
+    #QRCode,
+    #QR2Code,
+    #QRButton,
+    #QR2Button,
+    #resumeButton,
+    #quitButton,
+    #output-container {
+      display: none;
+    }
+
+    #output {
+      display: none;
+    }
+
+    #menu-button {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      z-index: 40;
+      display: none;
+      border: 1px solid #666;
+      background: rgba(0, 0, 0, 0.78);
+      color: #fff;
+      padding: 10px 14px;
+      border-radius: 9px;
+      cursor: pointer;
+      font-size: 14px;
+    }
+
+    #menu-button:hover {
+      background: rgba(30, 30, 30, 0.92);
+    }
+  </style>
+</head>
+<body>
+  <button id="menu-button" type="button">Menu</button>
+
+  <div id="title-screen">
+    <div id="title-inner">
+      <div id="logo">DELTARUNE</div>
+      <div id="subtitle">Select a chapter</div>
+
+      <div class="chapter-list">
+        <button class="chapter-btn" data-chapter="1">Chapter 1</button>
+        <button class="chapter-btn" data-chapter="2">Chapter 2</button>
+        <button class="chapter-btn" data-chapter="3">Chapter 3</button>
+        <button class="chapter-btn" data-chapter="4">Chapter 4</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="loader">
+    <div id="spinner"></div>
+    <div id="status">Preparing...</div>
+    <progress value="0" max="100" id="progress"></progress>
+  </div>
+
+  <canvas id="canvas" tabindex="-1"></canvas>
+  <div id="message-container"><div id="messages"></div></div>
+  <div id="pauseMenuContainer"></div>
+  <div id="QRCode"></div>
+  <div id="QR2Code"></div>
+  <button id="QRButton" type="button"></button>
+  <button id="QR2Button" type="button"></button>
+  <button id="resumeButton" type="button"></button>
+  <button id="quitButton" type="button"></button>
+  <div id="output-container"><textarea id="output"></textarea></div>
+
+  <script>
+    const CHAPTERS = {
+      1: {
+        name: "Chapter 1",
+        base: "https://cdn.jsdelivr.net/gh/bandit968thegamer-ops/undertale@main/deltarune/chapter1/",
+        type: "chapter1-fixed"
+      },
+      2: {
+        name: "Chapter 2",
+        base: "https://cdn.jsdelivr.net/gh/bandit968thegamer-ops/undertale@main/deltarune/chapter2/",
+        type: "merge-game",
+        gameParts: 4
+      },
+      3: {
+        name: "Chapter 3",
+        base: "https://cdn.jsdelivr.net/gh/bandit968thegamer-ops/undertale@main/deltarune/chapter3/",
+        type: "merge-game-and-data",
+        gameParts: 8,
+        dataParts: 2
+      },
+      4: {
+        name: "Chapter 4",
+        base: "https://cdn.jsdelivr.net/gh/bandit968thegamer-ops/undertale@main/deltarune/chapter4/",
+        type: "merge-game-and-data",
+        gameParts: 8,
+        dataParts: 2
+      }
+    };
+
+    const titleScreen = document.getElementById("title-screen");
+    const loader = document.getElementById("loader");
+    const statusEl = document.getElementById("status");
+    const progressEl = document.getElementById("progress");
+    const menuButton = document.getElementById("menu-button");
+
+    let launched = false;
+
+    function setBaseHref(href) {
+      let base = document.querySelector("base");
+      if (!base) {
+        base = document.createElement("base");
+        document.head.prepend(base);
+      }
+      base.href = href;
+    }
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function setProgress(value) {
+      progressEl.hidden = false;
+      progressEl.value = value;
+    }
+
+    function showLoader(chapterName) {
+      titleScreen.style.display = "none";
+      loader.style.display = "flex";
+      menuButton.style.display = "block";
+      setStatus("Launching " + chapterName + "...");
+      setProgress(5);
+    }
+
+    function resetToMenu() {
+      window.location.reload();
+    }
+
+    function absolute(base, file) {
+      return new URL(file, base).toString();
+    }
+
+    function addScript(src) {
+      return new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.onload = resolve;
+        s.onerror = () => reject(new Error("Failed to load script: " + src));
+        document.body.appendChild(s);
+      });
+    }
+
+    function mergeFiles(fileParts) {
+      return new Promise((resolve, reject) => {
+        const buffers = [];
+
+        function fetchPart(index) {
+          if (index >= fileParts.length) {
+            resolve(URL.createObjectURL(new Blob(buffers)));
+            return;
+          }
+
+          fetch(fileParts[index])
+            .then((r) => {
+              if (!r.ok) throw new Error("Failed to fetch " + fileParts[index]);
+              return r.arrayBuffer();
+            })
+            .then((data) => {
+              buffers.push(data);
+              const pct = Math.min(90, 10 + Math.round((index + 1) / fileParts.length * 55));
+              setProgress(pct);
+              setStatus("Downloading game files...");
+              fetchPart(index + 1);
+            })
+            .catch(reject);
+        }
+
+        fetchPart(0);
+      });
+    }
+
+    function getParts(base, file, start, end) {
+      const parts = [];
+      for (let i = start; i <= end; i++) {
+        parts.push(absolute(base, file + ".part" + i));
+      }
+      return parts;
+    }
+
+    function installOverrides(base, opts = {}) {
+      const gameUrl = opts.gameUrl || null;
+      const dataUrl = opts.dataUrl || null;
+      const wasmUrl = opts.wasmUrl || null;
+      const jsonUrl = opts.jsonUrl || null;
+      const audioWorkletUrl = opts.audioWorkletUrl || null;
+
+      const originalFetch = window.fetch.bind(window);
+      window.fetch = async function (...args) {
+        let [url, options] = args;
+
+        if (typeof url === "string") {
+          if (gameUrl && url.includes("game.unx")) url = gameUrl;
+          else if (dataUrl && url.includes("runner.data")) url = dataUrl;
+          else if (wasmUrl && url.includes("runner.wasm")) url = wasmUrl;
+          else if (jsonUrl && url.includes("runner.json")) url = jsonUrl;
+          else if (audioWorkletUrl && url.includes("audio-worklet.js")) url = audioWorkletUrl;
+          else if (!/^https?:|^blob:|^data:/.test(url)) url = absolute(base, url);
+        } else if (url instanceof Request) {
+          if (gameUrl && url.url.includes("game.unx")) {
+            url = new Request(gameUrl, url);
+          } else if (dataUrl && url.url.includes("runner.data")) {
+            url = new Request(dataUrl, url);
+          } else if (wasmUrl && url.url.includes("runner.wasm")) {
+            url = new Request(wasmUrl, url);
+          } else if (jsonUrl && url.url.includes("runner.json")) {
+            url = new Request(jsonUrl, url);
+          } else if (audioWorkletUrl && url.url.includes("audio-worklet.js")) {
+            url = new Request(audioWorkletUrl, url);
+          } else if (!/^https?:|^blob:|^data:/.test(url.url)) {
+            url = new Request(absolute(base, url.url), url);
+          }
+        }
+
+        return originalFetch(url, options);
+      };
+
+      const originalOpen = XMLHttpRequest.prototype.open;
+      XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+        if (typeof url === "string") {
+          if (gameUrl && url.includes("game.unx")) url = gameUrl;
+          else if (dataUrl && url.includes("runner.data")) url = dataUrl;
+          else if (wasmUrl && url.includes("runner.wasm")) url = wasmUrl;
+          else if (jsonUrl && url.includes("runner.json")) url = jsonUrl;
+          else if (audioWorkletUrl && url.includes("audio-worklet.js")) url = audioWorkletUrl;
+          else if (!/^https?:|^blob:|^data:/.test(url)) url = absolute(base, url);
+        }
+        return originalOpen.call(this, method, url, ...rest);
+      };
+    }
+
+    async function bootChapter(chapterNumber) {
+      if (launched) return;
+      launched = true;
+
+      const cfg = CHAPTERS[chapterNumber];
+      if (!cfg) return;
+
+      showLoader(cfg.name);
+      setBaseHref(cfg.base);
+
+      try {
+        if (cfg.type === "chapter1-fixed") {
+          installOverrides(cfg.base, {
+            gameUrl: absolute(cfg.base, "game.unx"),
+            dataUrl: absolute(cfg.base, "runner.data"),
+            wasmUrl: absolute(cfg.base, "runner.wasm"),
+            jsonUrl: absolute(cfg.base, "runner.json"),
+            audioWorkletUrl: absolute(cfg.base, "audio-worklet.js")
+          });
+
+          setStatus("Preparing bootstrap...");
+          setProgress(30);
+          await addScript("https://cdn.jsdelivr.net/gh/bandit968thegamer-ops/undertale@main/deltarune/chapter2/index.js");
+
+          setStatus("Starting...");
+          setProgress(75);
+          await addScript(absolute(cfg.base, "runner.js"));
+
+          setProgress(100);
+          loader.style.display = "none";
+          return;
+        }
+
+        if (cfg.type === "merge-game") {
+          const gameUrl = await mergeFiles(getParts(cfg.base, "game.unx", 1, cfg.gameParts));
+          installOverrides(cfg.base, { gameUrl });
+
+          setStatus("Preparing assets...");
+          setProgress(80);
+          await addScript(absolute(cfg.base, "index.js"));
+
+          setStatus("Starting...");
+          setProgress(92);
+          await addScript(absolute(cfg.base, "runner.js"));
+
+          setProgress(100);
+          loader.style.display = "none";
+          return;
+        }
+
+        if (cfg.type === "merge-game-and-data") {
+          const [gameUrl, dataUrl] = await Promise.all([
+            mergeFiles(getParts(cfg.base, "game.unx", 1, cfg.gameParts)),
+            mergeFiles(getParts(cfg.base, "runner.data", 1, cfg.dataParts))
+          ]);
+
+          installOverrides(cfg.base, { gameUrl, dataUrl });
+
+          setStatus("Preparing assets...");
+          setProgress(80);
+          await addScript(absolute(cfg.base, "index.js"));
+
+          setStatus("Starting...");
+          setProgress(92);
+          await addScript(absolute(cfg.base, "runner.js"));
+
+          setProgress(100);
+          loader.style.display = "none";
+          return;
+        }
+
+        throw new Error("Unknown chapter type.");
+      } catch (err) {
+        console.error(err);
+        setStatus("Failed to load " + cfg.name);
+        progressEl.hidden = true;
+        launched = false;
+      }
+    }
+
+    document.querySelectorAll(".chapter-btn").forEach((button) => {
+      button.addEventListener("click", () => {
+        bootChapter(button.dataset.chapter);
+      });
+    });
+
+    menuButton.addEventListener("click", resetToMenu);
+  </script>
+</body>
+</html>

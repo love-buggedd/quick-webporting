@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <base href="https://cdn.jsdelivr.net/gh/genizy/web-port@main/yume-nikki/">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Yume Nikki</title>
+  <style>
+    :root {
+      --color-gray: hsl(0, 0%, 55%);
+      --controls-size: 10vh;
+    }
+
+    @media (orientation: landscape) {
+      :root { --controls-size: 20vh; }
+    }
+
+    html { touch-action: none; }
+
+    body {
+      margin: 0;
+      color: white;
+      background: black;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      overflow: hidden;
+    }
+
+    .unselectable {
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+    }
+
+    #status {
+      font-size: 1.5rem;
+      color: var(--color-gray);
+      text-align: center;
+      position: fixed;
+      top: 12px;
+      left: 0;
+      right: 0;
+      z-index: 20;
+    }
+
+    #controls {
+      position: relative;
+      text-align: right;
+      z-index: 20;
+    }
+
+    #controls button {
+      display: inline-flex;
+      background: transparent;
+      border: 0;
+      color: white;
+      cursor: pointer;
+      padding: 0.5rem;
+    }
+
+    #canvas {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 100%;
+      height: 100%;
+      border: 0;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      transform: translate(-50%, -50%);
+      background: black;
+    }
+
+    #dpad, #apad {
+      position: fixed;
+      bottom: 1rem;
+      z-index: 20;
+    }
+
+    #dpad { left: 1rem; }
+    #apad { right: 1rem; }
+
+    #dpad svg {
+      width: calc(2 * var(--controls-size));
+      height: calc(2 * var(--controls-size));
+      fill: var(--color-gray);
+    }
+
+    #dpad svg rect { opacity: 0.4; }
+
+    #apad > * {
+      width: var(--controls-size);
+      height: var(--controls-size);
+      background-color: var(--color-gray);
+      border-radius: 50%;
+    }
+
+    #apad > :last-child {
+      position: relative;
+      right: var(--controls-size);
+    }
+
+    #dpad path:not(.active),
+    #apad > *:not(.active) {
+      opacity: 0.4;
+    }
+
+    #overlay {
+      position: fixed;
+      inset: 0;
+      background: black;
+      z-index: 9999;
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay"></div>
+
+  <div id="controls">
+    <button id="controls-fullscreen" class="unselectable" aria-label="Fullscreen">
+      <svg viewBox="0 0 15 15" fill="none" xmlns="http://www.w3.org/2000/svg" width="25" height="25">
+        <path d="M13.5 13.5H10m3.5 0V10m0 3.5l-4-4m.5-8h3.5m0 0V5m0-3.5l-4 4M5 1.5H1.5m0 0V5m0-3.5l4 4m-4 4.5v3.5m0 0H5m-3.5 0l4-4" stroke="currentColor"></path>
+      </svg>
+    </button>
+  </div>
+
+  <div id="status">LOADING...</div>
+
+  <div id="viewport">
+    <canvas id="canvas" tabindex="-1" class="unselectable"></canvas>
+
+    <div id="dpad" class="unselectable">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 72 72">
+        <path id="dpad-up" data-key="ArrowUp" d="M48,5.8C48,2.5,45.4,0,42,0H29.9C26.6,0,24,2.4,24,5.8V24h24V5.8z" />
+        <path id="dpad-right" data-key="ArrowRight" d="M66.2,24H48v24h18.2c3.3,0,5.8-2.7,5.8-6V29.9C72,26.5,69.5,24,66.2,24z" />
+        <path id="dpad-down" data-key="ArrowDown" d="M24,66.3c0,3.3,2.6,5.7,5.9,5.7H42c3.3,0,6-2.4,6-5.7V48H24V66.3z" />
+        <path id="dpad-left" data-key="ArrowLeft" d="M5.7,24C2.4,24,0,26.5,0,29.9V42c0,3.3,2.3,6,5.7,6H24V24H5.7z" />
+        <rect id="dpad-center" x="24" y="24" width="24" height="24" />
+      </svg>
+    </div>
+
+    <div id="apad" class="unselectable">
+      <div id="apad-escape" data-key="Escape"></div>
+      <div id="apad-enter" data-key="Enter"></div>
+    </div>
+  </div>
+
+  <script async src="index.js"></script>
+  <script>
+    const canvas = document.getElementById("canvas");
+    const overlay = document.getElementById("overlay");
+    const status = document.getElementById("status");
+    const keys = new Map();
+    const keysDown = new Map();
+    let lastTouchedId = null;
+
+    function hideOverlay() {
+      if (overlay) overlay.remove();
+      if (status) status.textContent = "";
+    }
+
+    function showError(text) {
+      if (status) status.textContent = text;
+    }
+
+    window.addEventListener("load", () => {
+      if (typeof createEasyRpgPlayer !== "function") {
+        showError("FAILED TO LOAD");
+        return;
+      }
+
+      createEasyRpgPlayer({
+        game: undefined,
+        saveFs: undefined
+      }).then((Module) => {
+        Module.initApi();
+        canvas.focus();
+        hideOverlay();
+      }).catch((err) => {
+        console.error(err);
+        showError("FAILED TO LOAD");
+      });
+    });
+
+    canvas.addEventListener("mouseenter", () => canvas.focus());
+    canvas.addEventListener("click", () => canvas.focus());
+
+    document.getElementById("controls-fullscreen").addEventListener("click", () => {
+      const viewport = document.getElementById("viewport");
+      if (viewport.requestFullscreen) viewport.requestFullscreen();
+    });
+
+    function simulateKeyboardEvent(eventType, key) {
+      const event = new Event(eventType, { bubbles: true });
+      event.code = key;
+      canvas.dispatchEvent(event);
+    }
+
+    function bindKey(node, key) {
+      keys.set(node.id, key);
+
+      node.addEventListener("touchstart", (event) => {
+        event.preventDefault();
+        simulateKeyboardEvent("keydown", key);
+        keysDown.set(event.target.id, node.id);
+        node.classList.add("active");
+      });
+
+      node.addEventListener("touchend", (event) => {
+        event.preventDefault();
+        const pressedKey = keysDown.get(event.target.id);
+        if (pressedKey && keys.has(pressedKey)) {
+          simulateKeyboardEvent("keyup", keys.get(pressedKey));
+        }
+        keysDown.delete(event.target.id);
+        node.classList.remove("active");
+        if (lastTouchedId) {
+          const prev = document.getElementById(lastTouchedId);
+          if (prev) prev.classList.remove("active");
+        }
+      });
+    }
+
+    ["dpad-up","dpad-right","dpad-down","dpad-left","apad-escape","apad-enter"].forEach((id) => {
+      const node = document.getElementById(id);
+      if (node) bindKey(node, node.dataset.key);
+    });
+  </script>
+</body>
+</html>

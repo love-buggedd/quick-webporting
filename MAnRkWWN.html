@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <base href="https://cdn.jsdelivr.net/gh/web-ports/clover-pit@main/">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+  <title>Clover Pit</title>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    #unity-canvas {
+      display: none;
+      width: 100vw;
+      height: 100vh;
+      background: #000;
+    }
+
+    #loader {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background:
+        radial-gradient(circle at center, rgba(0, 120, 0, 0.10) 0%, rgba(0, 0, 0, 0) 42%),
+        linear-gradient(180deg, #070907 0%, #000 100%);
+      z-index: 10;
+    }
+
+    #loader-inner {
+      width: min(88vw, 420px);
+      text-align: center;
+    }
+
+    #title {
+      font-size: clamp(28px, 5vw, 42px);
+      font-weight: 800;
+      letter-spacing: 2px;
+      margin-bottom: 10px;
+    }
+
+    #subtitle {
+      font-size: 13px;
+      color: #9e9e9e;
+      margin-bottom: 22px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+
+    #status {
+      font-size: 15px;
+      color: #d8d8d8;
+      margin-bottom: 12px;
+      min-height: 20px;
+    }
+
+    #bar-wrap {
+      width: 100%;
+      height: 12px;
+      border: 1px solid #3a3a3a;
+      background: #111;
+      border-radius: 999px;
+      overflow: hidden;
+      box-sizing: border-box;
+    }
+
+    #bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #3fa34d, #8ad66b);
+      border-radius: 999px;
+      transition: width 0.18s ease;
+    }
+
+    #hint {
+      margin-top: 10px;
+      font-size: 12px;
+      color: #7f7f7f;
+      min-height: 16px;
+    }
+
+    #error {
+      margin-top: 14px;
+      font-size: 13px;
+      color: #ff8b8b;
+      white-space: pre-wrap;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="loader">
+    <div id="loader-inner">
+      <div id="title">CLOVER PIT</div>
+      <div id="subtitle">ouuughhh im loading it</div>
+      <div id="status">Preparing files...</div>
+      <div id="bar-wrap"><div id="bar"></div></div>
+      <div id="hint">Please wait</div>
+      <div id="error"></div>
+    </div>
+  </div>
+
+  <canvas id="unity-canvas" tabindex="-1"></canvas>
+
+  <script src="Build/CloverPit.loader.js"></script>
+  <script>
+    const canvas = document.getElementById("unity-canvas");
+    const loader = document.getElementById("loader");
+    const statusEl = document.getElementById("status");
+    const barEl = document.getElementById("bar");
+    const hintEl = document.getElementById("hint");
+    const errorEl = document.getElementById("error");
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    function setBar(percent) {
+      barEl.style.width = Math.max(0, Math.min(100, percent)) + "%";
+    }
+
+    function setHint(text) {
+      hintEl.textContent = text;
+    }
+
+    function fail(message, err) {
+      console.error(message, err || "");
+      setStatus("Load failed");
+      errorEl.style.display = "block";
+      errorEl.textContent = message + (err ? "\n" + String(err) : "");
+      setHint("Check the browser console for details");
+    }
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      canvas.style.width = window.innerWidth + "px";
+      canvas.style.height = window.innerHeight + "px";
+    }
+
+    resizeCanvas();
+    window.addEventListener("resize", resizeCanvas);
+
+    function getParts(file, start, end) {
+      const parts = [];
+      for (let i = start; i <= end; i++) {
+        parts.push(file + ".part" + i);
+      }
+      return parts;
+    }
+
+    function mergeFiles(fileParts, phaseStart, phaseEnd, label) {
+      return new Promise((resolve, reject) => {
+        const buffers = [];
+        const total = fileParts.length;
+
+        function fetchPart(index) {
+          if (index >= total) {
+            resolve(URL.createObjectURL(new Blob(buffers)));
+            return;
+          }
+
+          fetch(fileParts[index])
+            .then((response) => {
+              if (!response.ok) {
+                throw new Error(fileParts[index] + " returned HTTP " + response.status);
+              }
+              return response.arrayBuffer();
+            })
+            .then((data) => {
+              buffers.push(data);
+              const progress = phaseStart + ((index + 1) / total) * (phaseEnd - phaseStart);
+              setBar(progress);
+              setStatus(label + " " + (index + 1) + " / " + total);
+              fetchPart(index + 1);
+            })
+            .catch(reject);
+        }
+
+        fetchPart(0);
+      });
+    }
+
+    Promise.all([
+      mergeFiles(getParts("Build/CloverPit.data", 1, 3), 5, 55, "Loading data"),
+      mergeFiles(getParts("Build/CloverPit.wasm", 1, 3), 55, 80, "Loading code")
+    ]).then(([dataUrl, wasmUrl]) => {
+      setStatus("Starting engine...");
+      setHint("Almost there");
+      setBar(85);
+
+      canvas.style.display = "block";
+
+      return createUnityInstance(canvas, {
+        dataUrl: dataUrl,
+        frameworkUrl: "Build/CloverPit.framework.js",
+        codeUrl: wasmUrl,
+        streamingAssetsUrl: "StreamingAssets",
+        companyName: "web-ports",
+        productName: "Clover Pit",
+        productVersion: "1.0"
+      }, (progress) => {
+        const pct = 85 + (progress * 15);
+        setBar(pct);
+        setStatus("Initializing game...");
+      });
+    }).then(() => {
+      setBar(100);
+      setStatus("Ready");
+      setTimeout(() => {
+        loader.remove();
+      }, 250);
+    }).catch((err) => {
+      fail("Failed to start Clover Pit.", err);
+    });
+  </script>
+</body>
+</html>

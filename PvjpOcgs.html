@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="en-us">
+<head>
+  <base href="https://cdn.jsdelivr.net/gh/web-ports/peaks-of-yore@main/">
+  <meta charset="utf-8">
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta name="viewport" content="width=device-width, height=device-height, initial-scale=1.0, user-scalable=no, shrink-to-fit=yes">
+  <title>Peaks of Yore</title>
+  <script src="TemplateData/UnityProgress.js"></script>
+  <script src="Build/UnityLoader.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: #000;
+      color: #fff;
+      font-family: Arial, sans-serif;
+    }
+
+    #unityContainer {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      background: #000;
+    }
+
+    #loading-text {
+      position: fixed;
+      top: 50%;
+      left: 50%;
+      transform: translateX(-50%, -50%);
+      color: white;
+      font-size: 28px;
+      font-family: monospace;
+      text-align: center;
+      z-index: 20;
+      text-shadow: 0 2px 8px rgba(0,0,0,0.7);
+    }
+  </style>
+</head>
+<body>
+  <div id="loading-text">LOADING...</div>
+  <div id="unityContainer"></div>
+
+  <script>
+    const loadingText = document.getElementById("loading-text");
+    let totalBytes = 0;
+    let loadedBytes = 0;
+
+    async function fetchWithProgress(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error("Failed to fetch " + url + " (" + response.status + ")");
+
+      const contentLength = +response.headers.get("Content-Length") || 0;
+      totalBytes += contentLength;
+
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        loadedBytes += value.length;
+
+        if (totalBytes > 0) {
+          const pct = ((loadedBytes / totalBytes) * 100).toFixed(1);
+          loadingText.textContent = "LOADING... " + pct + "%";
+        } else {
+          loadingText.textContent = "LOADING...";
+        }
+      }
+
+      const fullBuffer = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        fullBuffer.set(chunk, offset);
+        offset += chunk.length;
+      }
+      return fullBuffer.buffer;
+    }
+
+    async function mergeFiles(fileParts) {
+      const buffers = await Promise.all(fileParts.map(part => fetchWithProgress(part)));
+      return URL.createObjectURL(new Blob(buffers));
+    }
+
+    function getParts(file, start, end) {
+      const parts = [];
+      for (let i = start; i <= end; i++) {
+        parts.push(file + ".part" + i);
+      }
+      return parts;
+    }
+
+    (async () => {
+      try {
+        const [dataUrl, wasmUrl, webmUrl] = await Promise.all([
+          mergeFiles(getParts("Build/yore.data.unityweb", 1, 76)),
+          mergeFiles(getParts("Build/yore.wasm.code.unityweb", 1, 2)),
+          mergeFiles(getParts("StreamingAssets/TrueEndingVideo_1920x1080.m4v", 1, 9))
+        ]);
+
+        window.randomwebm = webmUrl;
+
+        const realSrc = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, "src");
+        Object.defineProperty(HTMLMediaElement.prototype, "src", {
+          set(value) {
+            if (typeof value === "string" && value.includes("TrueEndingVideo_1920x1080.m4v")) {
+              value = window.randomwebm;
+            }
+            return realSrc.set.call(this, value);
+          },
+          get() {
+            return realSrc.get.call(this);
+          }
+        });
+
+        const originalOpen = XMLHttpRequest.prototype.open;
+        XMLHttpRequest.prototype.open = function (method, url, ...rest) {
+          if (typeof url === "string") {
+            if (url.includes("yore.data.unityweb")) {
+              url = dataUrl;
+            } else if (url.includes("yore.wasm.code.unityweb")) {
+              url = wasmUrl;
+            }
+          }
+          return originalOpen.call(this, method, url, ...rest);
+        };
+
+        UnityLoader.instantiate("unityContainer", "Build/yore.json", {
+          onProgress: UnityProgress
+        });
+
+        loadingText.remove();
+      } catch (err) {
+        console.error(err);
+        loadingText.textContent = "FAILED TO LOAD";
+      }
+    })();
+  </script>
+</body>
+</html>
